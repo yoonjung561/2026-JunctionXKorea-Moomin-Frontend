@@ -510,6 +510,226 @@
   word-break: break-word;
 }
 
+.resultsPage {
+  min-height: 100vh;
+  background: var(--surface-2);
+}
+
+.resultsHeader {
+  display: flex;
+  min-height: 88px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 18px 32px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--surface);
+}
+
+.resultsClient {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.resultsClient strong {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.resultsClientMark {
+  width: 17px;
+  height: 17px;
+  border-radius: 4px;
+  background: var(--accent-deep);
+  box-shadow: inset 0 0 0 5px rgba(255, 255, 255, 0.88);
+}
+
+.resultsHeader p {
+  margin: 3px 0 0 27px;
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+
+.resultsContent {
+  display: flex;
+  width: min(100%, 1120px);
+  flex-direction: column;
+  gap: 22px;
+  margin: 0 auto;
+  padding: 28px 32px 60px;
+}
+
+.resultCard {
+  padding: 26px 28px 20px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.cardHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 28px;
+}
+
+.cardHeading h2 {
+  margin-top: 7px;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.cardHeading p,
+.cardHeading > span {
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+
+.cardHeading p {
+  margin-top: 4px;
+}
+
+.keywordBars {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 24px 0 22px;
+}
+
+.keywordRow {
+  display: grid;
+  grid-template-columns: minmax(86px, 130px) minmax(180px, 1fr) 50px 54px;
+  align-items: center;
+  gap: 12px;
+}
+
+.keywordRow strong {
+  overflow: hidden;
+  font-size: 12.5px;
+  font-weight: 500;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.keywordTrack {
+  position: relative;
+  height: 22px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--surface-3);
+}
+
+.keywordTrack > span {
+  display: block;
+  min-width: 4px;
+  height: 100%;
+  border-radius: inherit;
+  background: #a8c6ef;
+  transition: width 300ms ease;
+}
+
+.keywordTrack > .keywordBarPrimary {
+  background: #5f9bea;
+}
+
+.keywordRow b {
+  color: var(--accent-deep);
+  font-family: Poppins, system-ui, sans-serif;
+  font-size: 11.5px;
+  font-weight: 500;
+  text-align: right;
+}
+
+.keywordRow > span {
+  color: var(--text-3);
+  font-family: Poppins, system-ui, sans-serif;
+  font-size: 10.5px;
+  text-align: right;
+}
+
+.cardNote {
+  margin: 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-hair);
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.trendLegend {
+  display: flex;
+  max-width: 58%;
+  max-height: 72px;
+  overflow-y: auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px 14px;
+}
+
+.trendLegend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-2);
+  font-size: 11px;
+}
+
+.trendLegend i {
+  width: 13px;
+  height: 2px;
+  border-radius: 2px;
+}
+
+.chartWrap {
+  margin: 22px 0 12px;
+  padding: 4px 0 0;
+}
+
+.trendChart {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.trendChart line {
+  stroke: var(--line-hair);
+  stroke-width: 1;
+}
+
+.trendChart text {
+  fill: var(--text-3);
+  font-family: Poppins, system-ui, sans-serif;
+  font-size: 9px;
+}
+
+.trendChart .chartXAxis {
+  font-family: "IBM Plex Sans KR", system-ui, sans-serif;
+  font-size: 9.5px;
+}
+
+.rawResult {
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.rawResult summary {
+  padding: 14px 18px;
+  color: var(--text-2);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.rawResult .resultJson {
+  max-height: 360px;
+  margin: 0;
+  border-width: 1px 0 0;
+  border-radius: 0 0 10px 10px;
+}
+
 .modalScrim {
   position: absolute;
   z-index: 20;
@@ -746,6 +966,10 @@
     min-height: auto;
     padding: 48px 24px;
   }
+
+  .resultsPage {
+    min-height: auto;
+  }
 }
 
 @media (max-width: 640px) {
@@ -852,6 +1076,42 @@
 
   .confirmButton {
     width: 100%;
+  }
+
+  .resultsHeader {
+    padding: 16px 20px;
+  }
+
+  .resultsContent {
+    gap: 16px;
+    padding: 20px 16px 40px;
+  }
+
+  .resultCard {
+    padding: 22px 16px 18px;
+  }
+
+  .cardHeading {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .trendLegend {
+    max-width: 100%;
+    justify-content: flex-start;
+  }
+
+  .keywordRow {
+    grid-template-columns: 72px minmax(100px, 1fr) 42px;
+    gap: 8px;
+  }
+
+  .keywordRow strong {
+    font-size: 11.5px;
+  }
+
+  .keywordRow > span {
+    display: none;
   }
 }
 

@@ -6,6 +6,7 @@ import type {
   FormEvent,
 } from "react";
 import { useRef, useState } from "react";
+import KeywordDashboard from "./KeywordDashboard";
 import styles from "./page.module.css";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
@@ -90,7 +91,7 @@ function readUtteranceRecords(
   return value.flatMap((utterance) => {
     if (!isRecord(utterance)) return [];
 
-    const speakerLabel =
+    const clientSpeakerLabel =
       normalizeLabel(
         utterance.speaker_label ?? utterance.speakerLabel ?? utterance.label,
       ) ?? normalizeLabel(fallbackSpeakerLabel);
@@ -98,7 +99,7 @@ function readUtteranceRecords(
       utterance.utterance_text ?? utterance.utteranceText ?? utterance.text,
     );
 
-    if (!speakerLabel || !utteranceText) return [];
+    if (!clientSpeakerLabel || !utteranceText) return [];
 
     const utteranceId = normalizeText(
       utterance.utterance_id ?? utterance.utteranceId ?? utterance.id,
@@ -106,11 +107,11 @@ function readUtteranceRecords(
 
     return [
       {
-        speakerLabel,
+        speakerLabel: clientSpeakerLabel,
         utteranceText,
         dedupeKey: utteranceId
-          ? `${speakerLabel}::${utteranceId}`
-          : `${speakerLabel}::${utteranceText}`,
+          ? `${clientSpeakerLabel}::${utteranceId}`
+          : `${clientSpeakerLabel}::${utteranceText}`,
       },
     ];
   });
@@ -230,6 +231,17 @@ async function readResponse(response: Response): Promise<unknown> {
   }
 }
 
+function buildApiUrl(path: string) {
+  const baseUrl = API_URL?.replace(/\/$/, "") ?? "";
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+
+  if (baseUrl.endsWith("/api") && normalizedPath.startsWith("/api/")) {
+    return `${baseUrl}${normalizedPath.slice(4)}`;
+  }
+
+  return `${baseUrl}${normalizedPath}`;
+}
+
 export default function Home() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -242,6 +254,8 @@ export default function Home() {
   const [selectedSpeakerLabel, setSelectedSpeakerLabel] = useState<string | null>(
     null,
   );
+  const [analysisSessionId, setAnalysisSessionId] = useState(SESSION_ID);
+  const [isConfirmingSpeaker, setIsConfirmingSpeaker] = useState(false);
 
   function selectFile(nextFile: File | null) {
     setFile(nextFile);
@@ -249,6 +263,8 @@ export default function Home() {
     setError(null);
     setSpeakerConfirmation(null);
     setSelectedSpeakerLabel(null);
+    setAnalysisSessionId(SESSION_ID);
+    setIsConfirmingSpeaker(false);
     setView("upload");
   }
 
@@ -285,7 +301,7 @@ export default function Home() {
       formData.append("file", file);
 
       const response = await fetch(
-        `${API_URL.replace(/\/$/, "")}/api/sessions/${SESSION_ID}/analysis`,
+        buildApiUrl(`/api/sessions/${SESSION_ID}/analysis`),
         { method: "POST", body: formData },
       );
       const responseBody = await readResponse(response);
@@ -298,6 +314,13 @@ export default function Home() {
 
       console.log(responseBody);
       setResult(responseBody);
+      if (
+        isRecord(responseBody) &&
+        typeof responseBody.sessionId === "string" &&
+        responseBody.sessionId.trim()
+      ) {
+        setAnalysisSessionId(responseBody.sessionId.trim());
+      }
       const nextSpeakerConfirmation = findSpeakerConfirmation(responseBody);
 
       if (nextSpeakerConfirmation) {
@@ -317,11 +340,44 @@ export default function Home() {
     }
   }
 
-  function handleConfirmSpeaker() {
-    console.log("확인된 내담자 발화자:", selectedSpeakerLabel);
-    setSpeakerConfirmation(null);
-    setSelectedSpeakerLabel(null);
-    setView("complete");
+  async function handleConfirmSpeaker() {
+    if (!selectedSpeakerLabel || !API_URL || isConfirmingSpeaker) return;
+
+    setIsConfirmingSpeaker(true);
+
+    try {
+      const response = await fetch(
+        buildApiUrl(
+          `/api/sessions/${analysisSessionId}/speaker-selection`,
+        ),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ clientSpeakerLabel: selectedSpeakerLabel }),
+        },
+      );
+      const responseBody = await readResponse(response);
+
+      if (!response.ok) {
+        throw new Error(
+          `HTTP ${response.status}: ${JSON.stringify(responseBody)}`,
+        );
+      }
+
+      console.log("확인된 내담자 발화자:", selectedSpeakerLabel);
+      console.log("발화자 선택 응답:", responseBody);
+      setResult({
+        analysis: result,
+        speakerSelection: responseBody,
+      });
+      setSpeakerConfirmation(null);
+      setSelectedSpeakerLabel(null);
+      setView("complete");
+    } catch (requestError) {
+      console.error("발화자 선택 요청 오류:", requestError);
+    } finally {
+      setIsConfirmingSpeaker(false);
+    }
   }
 
   return (
@@ -498,25 +554,7 @@ export default function Home() {
         )}
 
         {view === "complete" && (
-          <section className={styles.centered} aria-live="polite">
-            <div className={styles.resultWrap}>
-              <div className={styles.eyebrow}>분석 완료</div>
-              <h1>기록 분석이 끝났습니다</h1>
-              <p className={styles.sub}>
-                Backend와 문서 분석 Agent가 반환한 결과입니다.
-              </p>
-              <pre className={styles.resultJson}>
-                {JSON.stringify(result, null, 2)}
-              </pre>
-              <button
-                className={`${styles.button} ${styles.primaryButton}`}
-                onClick={() => setView("upload")}
-                type="button"
-              >
-                다른 문서 분석
-              </button>
-            </div>
-          </section>
+          <KeywordDashboard onReset={() => selectFile(null)} result={result} />
         )}
 
         {view === "analyzing" && speakerConfirmation && (
@@ -598,11 +636,11 @@ export default function Home() {
               <footer className={styles.modalFooter}>
                 <button
                   className={styles.confirmButton}
-                  disabled={!selectedSpeakerLabel}
+                  disabled={!selectedSpeakerLabel || isConfirmingSpeaker}
                   onClick={handleConfirmSpeaker}
                   type="button"
                 >
-                  계속 분석
+                  {isConfirmingSpeaker ? "분석 중" : "계속 분석"}
                 </button>
               </footer>
             </section>
