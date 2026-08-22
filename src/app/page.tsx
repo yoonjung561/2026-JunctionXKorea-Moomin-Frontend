@@ -23,6 +23,7 @@ type View = "upload" | "analyzing" | "complete";
 type SpeakerOption = {
   label: string;
   utterances: string[];
+  utteranceCount: number;
 };
 
 type SpeakerConfirmation = {
@@ -38,6 +39,12 @@ type AnalysisApiResponse = {
   counselorSpeakerLabel?: string;
   speakers?: unknown;
   analysisResult?: unknown;
+};
+
+type UtteranceRecord = {
+  speakerLabel: string;
+  utteranceText: string;
+  dedupeKey: string;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -57,17 +64,12 @@ function parseJsonText(value: unknown): unknown {
   }
 }
 
-function readUtterances(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
+function normalizeText(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
 
-  return value
-    .map((utterance) => {
-      if (!isRecord(utterance)) return null;
-      const text =
-        utterance.utterance_text ?? utterance.utteranceText ?? utterance.text;
-      return typeof text === "string" && text.trim() ? text.trim() : null;
-    })
-    .filter((utterance): utterance is string => Boolean(utterance));
+function normalizeLabel(value: unknown): string | null {
+  return normalizeText(value);
 }
 
 function normalizeSpeakerLabels(value: unknown): string[] {
@@ -79,76 +81,76 @@ function normalizeSpeakerLabels(value: unknown): string[] {
     .filter(Boolean);
 }
 
-function readAnalysisResultUtterances(
-  analysisResult: unknown,
-): Map<string, string[]> {
-  const utterancesBySpeaker = new Map<string, string[]>();
-  const queue: unknown[] = [analysisResult];
-  const visited = new Set<object>();
+function readUtteranceRecords(
+  value: unknown,
+  fallbackSpeakerLabel?: string | null,
+): UtteranceRecord[] {
+  if (!Array.isArray(value)) return [];
 
-  const addUtterance = (label: unknown, utterance: unknown) => {
-    if (typeof label !== "string" || !label.trim()) return;
-    if (typeof utterance !== "string" || !utterance.trim()) return;
+  return value.flatMap((utterance) => {
+    if (!isRecord(utterance)) return [];
 
-    const normalizedLabel = label.trim();
-    const previous = utterancesBySpeaker.get(normalizedLabel) ?? [];
-    utterancesBySpeaker.set(normalizedLabel, [
-      ...previous,
-      utterance.trim(),
-    ]);
-  };
-
-  while (queue.length > 0) {
-    const current = queue.shift();
-    const parsed = parseJsonText(current);
-
-    if (parsed) {
-      queue.unshift(parsed);
-      continue;
-    }
-
-    if (Array.isArray(current)) {
-      current.forEach((item) => {
-        if (isRecord(item)) {
-          addUtterance(
-            item.speaker_label ?? item.speakerLabel ?? item.label,
-            item.utterance_text ?? item.utteranceText ?? item.text,
-          );
-        }
-      });
-      queue.push(...current);
-      continue;
-    }
-
-    if (!isRecord(current) || visited.has(current)) continue;
-    visited.add(current);
-
-    addUtterance(
-      current.speaker_label ?? current.speakerLabel ?? current.label,
-      current.utterance_text ?? current.utteranceText ?? current.text,
+    const speakerLabel =
+      normalizeLabel(
+        utterance.speaker_label ?? utterance.speakerLabel ?? utterance.label,
+      ) ?? normalizeLabel(fallbackSpeakerLabel);
+    const utteranceText = normalizeText(
+      utterance.utterance_text ?? utterance.utteranceText ?? utterance.text,
     );
 
-    const recordEntries = [
-      ["client_utterances", current.client_utterances],
-      ["clientUtterances", current.clientUtterances],
-      ["counselor_utterances", current.counselor_utterances],
-      ["counselorUtterances", current.counselorUtterances],
-    ] as const;
+    if (!speakerLabel || !utteranceText) return [];
 
-    recordEntries.forEach(([key, value]) => {
-      const utterances = readUtterances(value);
-      if (utterances.length === 0) return;
+    const utteranceId = normalizeText(
+      utterance.utterance_id ?? utterance.utteranceId ?? utterance.id,
+    );
 
-      const label =
-        key.startsWith("client")
-          ? current.client_speaker_label ?? current.clientSpeakerLabel
-          : current.counselor_speaker_label ?? current.counselorSpeakerLabel;
+    return [
+      {
+        speakerLabel,
+        utteranceText,
+        dedupeKey: utteranceId
+          ? `${speakerLabel}::${utteranceId}`
+          : `${speakerLabel}::${utteranceText}`,
+      },
+    ];
+  });
+}
 
-      utterances.forEach((utterance) => addUtterance(label, utterance));
-    });
+function readAnalysisResultUtterances(
+  analysisResult: unknown,
+  clientSpeakerLabel?: string | null,
+  counselorSpeakerLabel?: string | null,
+): Map<string, Map<string, string>> {
+  const parsedAnalysisResult = parseJsonText(analysisResult) ?? analysisResult;
+  if (!isRecord(parsedAnalysisResult)) return new Map();
 
-    queue.push(...Object.values(current));
-  }
+  const utterancesBySpeaker = new Map<string, Map<string, string>>();
+
+  const addUtterance = (record: UtteranceRecord) => {
+    const previous =
+      utterancesBySpeaker.get(record.speakerLabel) ?? new Map<string, string>();
+    previous.set(record.dedupeKey, record.utteranceText);
+    utterancesBySpeaker.set(record.speakerLabel, previous);
+  };
+
+  const sources = [
+    {
+      utterances:
+        parsedAnalysisResult.client_utterances ??
+        parsedAnalysisResult.clientUtterances,
+      fallbackSpeakerLabel: clientSpeakerLabel,
+    },
+    {
+      utterances:
+        parsedAnalysisResult.counselor_utterances ??
+        parsedAnalysisResult.counselorUtterances,
+      fallbackSpeakerLabel: counselorSpeakerLabel,
+    },
+  ];
+
+  sources.forEach(({ utterances, fallbackSpeakerLabel }) => {
+    readUtteranceRecords(utterances, fallbackSpeakerLabel).forEach(addUtterance);
+  });
 
   return utterancesBySpeaker;
 }
@@ -169,6 +171,8 @@ function findSpeakerConfirmation(
 
   const utterancesBySpeaker = readAnalysisResultUtterances(
     response.analysisResult,
+    clientSpeakerLabel,
+    response.counselorSpeakerLabel,
   );
   const speakerLabels = new Set<string>([
     ...normalizeSpeakerLabels(response.speakers),
@@ -185,7 +189,8 @@ function findSpeakerConfirmation(
   const speakers = [...speakerLabels]
     .map((label) => ({
       label,
-      utterances: [...new Set(utterancesBySpeaker.get(label) ?? [])],
+      utterances: [...(utterancesBySpeaker.get(label)?.values() ?? [])],
+      utteranceCount: utterancesBySpeaker.get(label)?.size ?? 0,
     }))
     .sort((a, b) => a.label.localeCompare(b.label, "ko", { numeric: true }));
 
@@ -554,8 +559,8 @@ export default function Home() {
                       >
                         <div className={styles.speakerCardTop}>
                           <strong>{speaker.label}</strong>
-                          {speaker.utterances.length > 0 && (
-                            <span>{speaker.utterances.length}개 발화 감지</span>
+                          {speaker.utteranceCount > 0 && (
+                            <span>{speaker.utteranceCount}개 발화 감지</span>
                           )}
                         </div>
                         <div className={styles.utteranceList}>
