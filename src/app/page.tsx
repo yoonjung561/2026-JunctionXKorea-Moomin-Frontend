@@ -9,6 +9,7 @@ import { useRef, useState } from "react";
 import styles from "./page.module.css";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
+const SESSION_ID = "9beaeab4-d75b-42bc-9f02-0b3619dd9ba8";
 
 const clients = [
   { name: "김○○", meta: "9회기 진행 · 최근 05-06", active: true },
@@ -28,6 +29,15 @@ type SpeakerConfirmation = {
   selectedLabel: string;
   sessionNumber?: string;
   speakers: SpeakerOption[];
+};
+
+type AnalysisApiResponse = {
+  sessionId?: string;
+  status?: string;
+  clientSpeakerLabel?: string;
+  counselorSpeakerLabel?: string;
+  speakers?: unknown;
+  analysisResult?: unknown;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -60,23 +70,33 @@ function readUtterances(value: unknown): string[] {
     .filter((utterance): utterance is string => Boolean(utterance));
 }
 
-function readSpeakerLabel(value: unknown): string | undefined {
-  if (!Array.isArray(value)) return undefined;
+function normalizeSpeakerLabels(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
 
-  for (const utterance of value) {
-    if (!isRecord(utterance)) continue;
-    const label = utterance.speaker_label ?? utterance.speakerLabel;
-    if (typeof label === "string" && label.trim()) return label.trim();
-  }
-
-  return undefined;
+  return value
+    .filter((speaker): speaker is string => typeof speaker === "string")
+    .map((speaker) => speaker.trim())
+    .filter(Boolean);
 }
 
-function findSpeakerConfirmation(
-  responseBody: unknown,
-): SpeakerConfirmation | null {
-  const queue: unknown[] = [responseBody];
+function readAnalysisResultUtterances(
+  analysisResult: unknown,
+): Map<string, string[]> {
+  const utterancesBySpeaker = new Map<string, string[]>();
+  const queue: unknown[] = [analysisResult];
   const visited = new Set<object>();
+
+  const addUtterance = (label: unknown, utterance: unknown) => {
+    if (typeof label !== "string" || !label.trim()) return;
+    if (typeof utterance !== "string" || !utterance.trim()) return;
+
+    const normalizedLabel = label.trim();
+    const previous = utterancesBySpeaker.get(normalizedLabel) ?? [];
+    utterancesBySpeaker.set(normalizedLabel, [
+      ...previous,
+      utterance.trim(),
+    ]);
+  };
 
   while (queue.length > 0) {
     const current = queue.shift();
@@ -88,6 +108,14 @@ function findSpeakerConfirmation(
     }
 
     if (Array.isArray(current)) {
+      current.forEach((item) => {
+        if (isRecord(item)) {
+          addUtterance(
+            item.speaker_label ?? item.speakerLabel ?? item.label,
+            item.utterance_text ?? item.utteranceText ?? item.text,
+          );
+        }
+      });
       queue.push(...current);
       continue;
     }
@@ -95,75 +123,80 @@ function findSpeakerConfirmation(
     if (!isRecord(current) || visited.has(current)) continue;
     visited.add(current);
 
-    const clientLabel =
-      current.client_speaker_label ?? current.clientSpeakerLabel;
-    if (typeof clientLabel === "string" && clientLabel.trim()) {
-      const speakers = new Map<string, string[]>();
-      const addSpeaker = (label: unknown, utterances: string[] = []) => {
-        if (typeof label !== "string" || !label.trim()) return;
-        const normalizedLabel = label.trim();
-        const previous = speakers.get(normalizedLabel) ?? [];
-        speakers.set(normalizedLabel, [...previous, ...utterances]);
-      };
+    addUtterance(
+      current.speaker_label ?? current.speakerLabel ?? current.label,
+      current.utterance_text ?? current.utteranceText ?? current.text,
+    );
 
-      const availableSpeakers =
-        current.availableSpeakers ?? current.available_speakers;
-      if (Array.isArray(availableSpeakers)) {
-        availableSpeakers.forEach((label) => addSpeaker(label));
-      }
+    const recordEntries = [
+      ["client_utterances", current.client_utterances],
+      ["clientUtterances", current.clientUtterances],
+      ["counselor_utterances", current.counselor_utterances],
+      ["counselorUtterances", current.counselorUtterances],
+    ] as const;
 
-      const counselorUtteranceSource =
-        current.counselor_utterances ?? current.counselorUtterances;
-      const counselorLabel =
-        current.counselor_speaker_label ??
-        current.counselorSpeakerLabel ??
-        readSpeakerLabel(counselorUtteranceSource);
-      addSpeaker(counselorLabel, readUtterances(counselorUtteranceSource));
-      addSpeaker(
-        clientLabel,
-        readUtterances(
-          current.client_utterances ?? current.clientUtterances,
-        ),
-      );
+    recordEntries.forEach(([key, value]) => {
+      const utterances = readUtterances(value);
+      if (utterances.length === 0) return;
 
-      const allUtterances =
-        current.utterances ??
-        current.all_utterances ??
-        current.allUtterances ??
-        current.transcript;
-      if (Array.isArray(allUtterances)) {
-        allUtterances.forEach((utterance) => {
-          if (!isRecord(utterance)) return;
-          const speakerLabel =
-            utterance.speaker_label ?? utterance.speakerLabel;
-          addSpeaker(speakerLabel, readUtterances([utterance]));
-        });
-      }
+      const label =
+        key.startsWith("client")
+          ? current.client_speaker_label ?? current.clientSpeakerLabel
+          : current.counselor_speaker_label ?? current.counselorSpeakerLabel;
 
-      const sessionNumber =
-        current.session_number ?? current.sessionNumber;
-
-      return {
-        selectedLabel: clientLabel.trim(),
-        sessionNumber:
-          typeof sessionNumber === "string" && sessionNumber.trim()
-            ? sessionNumber.trim()
-            : undefined,
-        speakers: [...speakers.entries()]
-          .map(([label, utterances]) => ({
-            label,
-            utterances: [...new Set(utterances)],
-          }))
-          .sort((a, b) =>
-            a.label.localeCompare(b.label, "ko", { numeric: true }),
-          ),
-      };
-    }
+      utterances.forEach((utterance) => addUtterance(label, utterance));
+    });
 
     queue.push(...Object.values(current));
   }
 
-  return null;
+  return utterancesBySpeaker;
+}
+
+function findSpeakerConfirmation(
+  responseBody: unknown,
+): SpeakerConfirmation | null {
+  if (!isRecord(responseBody)) return null;
+
+  const response = responseBody as AnalysisApiResponse;
+  const clientSpeakerLabel =
+    typeof response.clientSpeakerLabel === "string" &&
+    response.clientSpeakerLabel.trim()
+      ? response.clientSpeakerLabel.trim()
+      : null;
+
+  if (!clientSpeakerLabel) return null;
+
+  const utterancesBySpeaker = readAnalysisResultUtterances(
+    response.analysisResult,
+  );
+  const speakerLabels = new Set<string>([
+    ...normalizeSpeakerLabels(response.speakers),
+    clientSpeakerLabel,
+  ]);
+
+  if (
+    typeof response.counselorSpeakerLabel === "string" &&
+    response.counselorSpeakerLabel.trim()
+  ) {
+    speakerLabels.add(response.counselorSpeakerLabel.trim());
+  }
+
+  const speakers = [...speakerLabels]
+    .map((label) => ({
+      label,
+      utterances: [...new Set(utterancesBySpeaker.get(label) ?? [])],
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label, "ko", { numeric: true }));
+
+  return {
+    selectedLabel: clientSpeakerLabel,
+    sessionNumber:
+      typeof response.sessionId === "string" && response.sessionId.trim()
+        ? response.sessionId.trim()
+        : undefined,
+    speakers,
+  };
 }
 
 function formatFileSize(size: number) {
@@ -247,7 +280,7 @@ export default function Home() {
       formData.append("file", file);
 
       const response = await fetch(
-        `${API_URL.replace(/\/$/, "")}/agent/analyze`,
+        `${API_URL.replace(/\/$/, "")}/api/sessions/${SESSION_ID}/analysis`,
         { method: "POST", body: formData },
       );
       const responseBody = await readResponse(response);
@@ -267,7 +300,7 @@ export default function Home() {
         setSelectedSpeakerLabel(nextSpeakerConfirmation.selectedLabel);
       } else {
         console.warn(
-          "분석 결과에서 client_speaker_label을 찾지 못했습니다.",
+          "분석 결과에서 clientSpeakerLabel을 찾지 못했습니다.",
           responseBody,
         );
         setView("complete");
