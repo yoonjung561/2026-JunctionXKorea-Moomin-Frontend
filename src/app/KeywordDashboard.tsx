@@ -61,9 +61,10 @@ export default function KeywordDashboard({
   }
 
   const visibleKeywords = data.summaries.slice(0, 9);
+  const visibleTrends = data.trends.slice(0, 5);
   const maximumCount = Math.max(...visibleKeywords.map((item) => item.count), 1);
   const trendMaximum = Math.max(
-    ...data.trends.flatMap((trend) => trend.values),
+    ...visibleTrends.flatMap((trend) => trend.values),
     1,
   );
   const chartTicks = [trendMaximum, trendMaximum * 0.5, 0];
@@ -133,13 +134,15 @@ export default function KeywordDashboard({
               <div className={styles.eyebrow}>변화 추이</div>
               <h2>발화를 지나며 어떻게 변했나</h2>
               <p>
-                {hasHistoricalSessions
+                {data.usesMockHistory
+                  ? "1~5회기 목데이터와 현재 분석 결과"
+                  : hasHistoricalSessions
                   ? `${data.groups.length}개 회기의 실제 등장 횟수`
                   : "분석 전 0에서 현재 키워드 집계 결과까지의 변화"}
               </p>
             </div>
             <div className={styles.trendLegend} aria-label="그래프 범례">
-              {data.trends.map((trend, index) => (
+              {visibleTrends.map((trend, index) => (
                 <span key={trend.keyword}>
                   <i style={{ background: trendColor(index) }} />
                   {trend.keyword}
@@ -166,7 +169,7 @@ export default function KeywordDashboard({
                   </g>
                 );
               })}
-              {data.trends.map((trend, trendIndex) => {
+              {visibleTrends.map((trend, trendIndex) => {
                 const points = makePolyline(trend.values, trendMaximum);
                 return (
                   <g key={trend.keyword}>
@@ -216,9 +219,9 @@ export default function KeywordDashboard({
           </div>
 
           <p className={styles.cardNote}>
-            세로축은 실제 등장 횟수입니다. 누적 회기 데이터가 없는 현재
-            단계에서는 모든 키워드를 0에서 시작해 이번 분석의 집계값과
-            연결합니다. 임의의 과거 데이터는 생성하지 않습니다.
+            {data.usesMockHistory
+              ? "1~5회기는 화면 검증용 목데이터이며, ‘현재 분석’은 이번 API 응답의 실제 키워드 집계값입니다. 실제 누적 회기 데이터가 제공되면 목데이터 대신 해당 결과를 사용합니다."
+              : "세로축은 회기별 실제 등장 횟수입니다."}
           </p>
         </article>
 

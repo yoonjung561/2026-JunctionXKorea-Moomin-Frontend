@@ -25,7 +25,18 @@ export type KeywordDashboardData = {
   totalMentions: number;
   trends: KeywordTrend[];
   uniqueKeywords: number;
+  usesMockHistory: boolean;
 };
+
+const MOCK_KEYWORD_HISTORY = [
+  { label: "1회기", counts: [6, 3, 1, 4, 2] },
+  { label: "2회기", counts: [7, 5, 2, 5, 3] },
+  { label: "3회기", counts: [5, 6, 4, 3, 4] },
+  { label: "4회기", counts: [4, 4, 3, 6, 5] },
+  { label: "5회기", counts: [3, 2, 5, 4, 5] },
+] as const;
+
+const MOCK_TREND_KEYWORDS = ["잠", "못 하다", "내일", "생각", "친구"] as const;
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -267,7 +278,7 @@ export function buildKeywordDashboardData(
   const hasHistoricalSessions = sessionLabels.length > 1;
   const groups = hasHistoricalSessions
     ? sessionLabels
-    : ["분석 전", "현재 분석"];
+    : [...MOCK_KEYWORD_HISTORY.map((session) => session.label), "현재 분석"];
   const trends = hasHistoricalSessions
     ? summaries.map(({ keyword }) => {
         const values = Array.from({ length: groups.length }, () => 0);
@@ -278,9 +289,14 @@ export function buildKeywordDashboardData(
         });
         return { keyword, values };
       })
-    : summaries.map(({ keyword, count }) => ({
+    : MOCK_TREND_KEYWORDS.map((keyword, keywordIndex) => ({
         keyword,
-        values: [0, count],
+        values: [
+          ...MOCK_KEYWORD_HISTORY.map(
+            (session) => session.counts[keywordIndex],
+          ),
+          totals.get(keyword) ?? 0,
+        ],
       }));
 
   return {
@@ -290,5 +306,6 @@ export function buildKeywordDashboardData(
     totalMentions,
     trends,
     uniqueKeywords: totals.size,
+    usesMockHistory: !hasHistoricalSessions,
   };
 }
