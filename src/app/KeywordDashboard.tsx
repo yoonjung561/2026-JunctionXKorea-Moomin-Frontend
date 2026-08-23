@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import Image from "next/image";
+import { useEffect, useRef, useState } from "react";
 import {
   buildKeywordDashboardData,
   readReadableStructuredText,
@@ -28,14 +29,32 @@ function includesKeyword(text: string, keyword: string) {
 
 type KeywordDashboardProps = {
   onReset: () => void;
+  originalDocumentUrl?: string;
   result: unknown;
 };
 
-function RealtimeNoteCard({ text }: { text: string }) {
+function RealtimeNoteCard({
+  onOpenOriginal,
+  text,
+}: {
+  onOpenOriginal?: () => void;
+  text: string;
+}) {
   return (
     <article className={`${styles.resultCard} ${styles.realtimeNoteCard}`}>
       <div className={styles.eyebrow}>실시간 기록</div>
-      <h2>상담 기록</h2>
+      <div className={styles.realtimeNoteTitle}>
+        <h2>상담 기록</h2>
+        {onOpenOriginal && (
+          <button
+            className={`${styles.button} ${styles.secondaryButton}`}
+            onClick={onOpenOriginal}
+            type="button"
+          >
+            손글씨 원본 보기
+          </button>
+        )}
+      </div>
       <p>업로드한 realtime_note 문서에서 정리된 내용입니다.</p>
       <div className={styles.realtimeNoteText}>{text}</div>
     </article>
@@ -63,11 +82,146 @@ function makePolyline(values: number[], maxValue: number) {
 
 export default function KeywordDashboard({
   onReset,
+  originalDocumentUrl,
   result,
 }: KeywordDashboardProps) {
   const [selectedKeyword, setSelectedKeyword] = useState<string | null>(null);
+  const [isOriginalPreviewOpen, setIsOriginalPreviewOpen] = useState(false);
+  const [isOriginalLoading, setIsOriginalLoading] = useState(false);
+  const [originalPreviewError, setOriginalPreviewError] = useState<string | null>(
+    null,
+  );
+  const [sourcePreviewUrl, setSourcePreviewUrl] = useState<string | null>(null);
+  const sourcePreviewUrlRef = useRef<string | null>(null);
+  const previewRequestIdRef = useRef(0);
   const data = buildKeywordDashboardData(result);
   const realtimeNoteText = readReadableStructuredText(result);
+  const canPreviewOriginal = Boolean(realtimeNoteText && originalDocumentUrl);
+
+  function closeOriginalPreview() {
+    previewRequestIdRef.current += 1;
+    setIsOriginalPreviewOpen(false);
+    setIsOriginalLoading(false);
+    setOriginalPreviewError(null);
+    if (sourcePreviewUrlRef.current) {
+      URL.revokeObjectURL(sourcePreviewUrlRef.current);
+      sourcePreviewUrlRef.current = null;
+    }
+    setSourcePreviewUrl(null);
+  }
+
+  async function openOriginalPreview() {
+    if (!canPreviewOriginal || !originalDocumentUrl) return;
+
+    const requestId = previewRequestIdRef.current + 1;
+    previewRequestIdRef.current = requestId;
+    setIsOriginalPreviewOpen(true);
+    setIsOriginalLoading(true);
+    setOriginalPreviewError(null);
+
+    if (sourcePreviewUrlRef.current) {
+      URL.revokeObjectURL(sourcePreviewUrlRef.current);
+      sourcePreviewUrlRef.current = null;
+      setSourcePreviewUrl(null);
+    }
+
+    try {
+      const response = await fetch(originalDocumentUrl, { method: "GET" });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: 원본 문서 조회 실패`);
+      }
+
+      const previewBlob = await response.blob();
+      const contentType = previewBlob.type.toLowerCase();
+      if (!contentType.startsWith("image/")) {
+        throw new Error(`지원하지 않는 Content-Type: ${contentType || "없음"}`);
+      }
+
+      if (previewRequestIdRef.current !== requestId) return;
+
+      const objectUrl = URL.createObjectURL(previewBlob);
+      sourcePreviewUrlRef.current = objectUrl;
+      setSourcePreviewUrl(objectUrl);
+    } catch (previewError) {
+      if (previewRequestIdRef.current !== requestId) return;
+      console.error("손글씨 원본 조회 오류:", previewError);
+      setOriginalPreviewError("서버에 저장된 원본 이미지를 불러오지 못했습니다.");
+    } finally {
+      if (previewRequestIdRef.current === requestId) {
+        setIsOriginalLoading(false);
+      }
+    }
+  }
+
+  useEffect(
+    () => () => {
+      if (sourcePreviewUrlRef.current) {
+        URL.revokeObjectURL(sourcePreviewUrlRef.current);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!isOriginalPreviewOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeOriginalPreview();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOriginalPreviewOpen]);
+  const originalPreviewModal =
+    isOriginalPreviewOpen ? (
+      <div
+        className={styles.originalPreviewScrim}
+        onMouseDown={closeOriginalPreview}
+        role="presentation"
+      >
+        <section
+          aria-labelledby="original-preview-title"
+          aria-modal="true"
+          className={styles.originalPreviewModal}
+          onMouseDown={(event) => event.stopPropagation()}
+          role="dialog"
+        >
+          <header className={styles.originalPreviewHeader}>
+            <div>
+              <h2 id="original-preview-title">손글씨 원본</h2>
+              <p>서버에 저장된 원본 이미지</p>
+            </div>
+            <button
+              className={styles.originalPreviewClose}
+              onClick={closeOriginalPreview}
+              type="button"
+            >
+              닫기
+            </button>
+          </header>
+          <div className={styles.originalPreviewContent}>
+            {isOriginalLoading ? (
+              <p className={styles.originalPreviewStatus}>
+                원본 이미지를 불러오는 중입니다...
+              </p>
+            ) : originalPreviewError ? (
+              <p className={styles.originalPreviewStatus} role="alert">
+                {originalPreviewError}
+              </p>
+            ) : sourcePreviewUrl ? (
+              <Image
+                alt="서버에 저장된 손글씨 원본"
+                fill
+                sizes="90vw"
+                src={sourcePreviewUrl}
+                unoptimized
+              />
+            ) : null}
+          </div>
+        </section>
+      </div>
+    ) : null;
 
   function handleExportPdf() {
     const previousTitle = document.title;
@@ -83,27 +237,37 @@ export default function KeywordDashboard({
 
   if (!data) {
     return (
-      <section className={styles.centered} aria-live="polite">
-        <div className={styles.resultWrap}>
-          <div className={styles.eyebrow}>분석 완료</div>
-          <h1>기록 분석이 끝났습니다</h1>
-          <p className={styles.sub}>
-            응답에서 client_utterance_keywords 값을 찾지 못해 원본 결과를
-            표시합니다.
-          </p>
-          <pre className={styles.resultJson}>
-            {JSON.stringify(result, null, 2)}
-          </pre>
-          {realtimeNoteText && <RealtimeNoteCard text={realtimeNoteText} />}
-          <button
-            className={`${styles.button} ${styles.primaryButton}`}
-            onClick={onReset}
-            type="button"
-          >
-            다른 문서 분석
-          </button>
-        </div>
-      </section>
+      <>
+        <section className={styles.centered} aria-live="polite">
+          <div className={styles.resultWrap}>
+            <div className={styles.eyebrow}>분석 완료</div>
+            <h1>기록 분석이 끝났습니다</h1>
+            <p className={styles.sub}>
+              응답에서 client_utterance_keywords 값을 찾지 못해 원본 결과를
+              표시합니다.
+            </p>
+            <pre className={styles.resultJson}>
+              {JSON.stringify(result, null, 2)}
+            </pre>
+            {realtimeNoteText && (
+              <RealtimeNoteCard
+                onOpenOriginal={
+                  canPreviewOriginal ? openOriginalPreview : undefined
+                }
+                text={realtimeNoteText}
+              />
+            )}
+            <button
+              className={`${styles.button} ${styles.primaryButton}`}
+              onClick={onReset}
+              type="button"
+            >
+              다른 문서 분석
+            </button>
+          </div>
+        </section>
+        {originalPreviewModal}
+      </>
     );
   }
 
@@ -309,7 +473,12 @@ export default function KeywordDashboard({
           </p>
         </article>
 
-        {realtimeNoteText && <RealtimeNoteCard text={realtimeNoteText} />}
+        {realtimeNoteText && (
+          <RealtimeNoteCard
+            onOpenOriginal={canPreviewOriginal ? openOriginalPreview : undefined}
+            text={realtimeNoteText}
+          />
+        )}
 
         <details className={styles.rawResult}>
           <summary>분석 결과 JSON 보기</summary>
@@ -405,6 +574,8 @@ export default function KeywordDashboard({
           </section>
         </aside>
       )}
+
+      {originalPreviewModal}
     </section>
   );
 }

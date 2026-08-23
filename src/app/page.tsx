@@ -243,7 +243,13 @@ function formatFileSize(size: number) {
 
 function fileKind(file: File) {
   const extension = file.name.split(".").pop()?.toUpperCase();
-  if (extension === "JPG" || extension === "JPEG" || extension === "PNG") {
+  if (
+    extension === "JPG" ||
+    extension === "JPEG" ||
+    extension === "PNG" ||
+    extension === "HEIC" ||
+    extension === "HEIF"
+  ) {
     return "손글씨";
   }
   if (extension === "PDF") return "문서 · 분석 준비 완료";
@@ -431,7 +437,9 @@ export default function Home() {
   }
 
   return (
-    <div className={styles.app}>
+    <div
+      className={`${styles.app} ${view === "complete" ? styles.appResults : ""}`}
+    >
       <aside className={styles.side}>
         <div className={styles.brand}>
           <span className={styles.brandMark} aria-hidden="true" />
@@ -512,7 +520,7 @@ export default function Home() {
                 id="document-upload"
                 className={styles.fileInput}
                 type="file"
-                accept="application/pdf,.pdf,.hwp,.txt,image/jpeg,image/png"
+                accept="application/pdf,.pdf,.hwp,.txt,image/jpeg,image/png,image/heic,image/heif,.heic,.heif"
                 onChange={handleFileChange}
               />
             </div>
@@ -604,7 +612,13 @@ export default function Home() {
         )}
 
         {view === "complete" && (
-          <KeywordDashboard onReset={() => selectFile(null)} result={result} />
+          <KeywordDashboard
+            onReset={() => selectFile(null)}
+            originalDocumentUrl={buildApiUrl(
+              `/api/sessions/${analysisSessionId}/original-document/preview`,
+            )}
+            result={result}
+          />
         )}
 
         {view === "analyzing" && speakerConfirmation && (
