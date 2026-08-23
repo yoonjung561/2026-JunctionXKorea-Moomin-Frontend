@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import type {
   ChangeEvent,
   DragEvent,
@@ -442,8 +443,14 @@ export default function Home() {
     >
       <aside className={styles.side}>
         <div className={styles.brand}>
-          <span className={styles.brandMark} aria-hidden="true" />
-          <span className={styles.brandName}>MoomIn</span>
+          <Image
+            alt="count.sel"
+            className={styles.brandLogo}
+            height={25}
+            priority
+            src="/countsel-logo.png"
+            width={148}
+          />
         </div>
         <div className={styles.sideLabel}>담당 내담자 12명</div>
         <nav className={styles.clients} aria-label="담당 내담자">

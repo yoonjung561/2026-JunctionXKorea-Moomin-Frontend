@@ -47,3 +47,54 @@ The sidebar is large enough in the full 1280 × 720 comparison to verify its hea
 - P3: The reference uses an icon-only close affordance; the implementation uses the clearer text label `닫기` because the project does not currently include an icon library.
 
 final result: passed
+
+---
+
+# Design QA — 로고 교체
+
+- source visual truth path: `/var/folders/zc/rns9wltx66j_rww4hl1_lqmw0000gp/T/codex-clipboard-39070645-804a-47cd-8b57-bfa5fb59607d.png`
+- implementation screenshot path: `/Users/yjkwak/Documents/junction/design-implementation-logo.jpg`
+- focused comparison path: `/Users/yjkwak/Documents/junction/design-comparison-logo.png`
+- viewport: desktop 1280 × 720 CSS px
+- source pixels: 1527 × 259 RGBA
+- implementation pixels: 1280 × 720 at 1× density
+- focused implementation crop: 268 × 72
+- density normalization: source wordmark was proportionally normalized to its implemented 148 × 25 CSS-pixel size before focused comparison
+- state: 문서 업로드 초기 화면, 좌측 사이드바 상단 로고 표시 상태
+
+## Full-view comparison evidence
+
+`design-implementation-logo.jpg` confirms that the supplied wordmark sits in the existing 268px client rail without changing the page hierarchy, sidebar width, or upload flow. The logo is sharp, fully visible, and aligned with the existing 22px sidebar inset.
+
+## Focused region comparison evidence
+
+`design-comparison-logo.png` places the normalized source asset beside the browser-rendered sidebar crop. The mark, `count.sel` word shape, aspect ratio, black fill, transparency, and 148 × 25 display size match without stretching or code-drawn replacement.
+
+## Findings
+
+- No actionable P0, P1, or P2 differences remain.
+- Fonts and typography: the logo lettering remains part of the supplied raster asset; no substitute font or reconstructed text was used.
+- Spacing and layout rhythm: the existing 72px brand row and 22px horizontal inset are preserved; the 25px-high wordmark is vertically centered.
+- Colors and visual tokens: the source's black mark is preserved against the existing white sidebar surface.
+- Image quality and asset fidelity: the exact supplied 1527 × 259 transparent PNG is rendered through Next Image at its native aspect ratio with no crop, distortion, CSS drawing, or placeholder.
+- Copy and content: the previous `MoomIn` text lockup is fully replaced by the supplied `count.sel` mark, with matching `alt="count.sel"` accessibility text.
+- Interaction and accessibility: the logo is informational and exposes descriptive alt text. The upload-page DOM and primary controls remain intact.
+- Browser verification: local page opened at 1280 × 720; the logo loaded successfully and the browser console contained no errors or warnings.
+
+## Comparison history
+
+- Initial focused comparison: no P0/P1/P2 mismatch found; no corrective iteration was required.
+
+## Implementation checklist
+
+- [x] Reuse the exact supplied logo asset.
+- [x] Remove the previous CSS-drawn icon and text lockup.
+- [x] Preserve source aspect ratio and sidebar alignment.
+- [x] Verify browser rendering and accessibility tree.
+- [x] Verify browser console, ESLint, TypeScript, and production build.
+
+## Follow-up polish
+
+- No P3 follow-up is required for the scoped logo replacement.
+
+final result: passed
