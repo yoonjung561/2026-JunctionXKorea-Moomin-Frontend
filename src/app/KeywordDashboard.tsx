@@ -1,14 +1,46 @@
-import { buildKeywordDashboardData } from "./keyword-analysis";
+"use client";
+
+import { useState } from "react";
+import {
+  buildKeywordDashboardData,
+  readReadableStructuredText,
+} from "./keyword-analysis";
 import styles from "./page.module.css";
 
 function trendColor(index: number) {
   return `hsl(${(index * 47 + 210) % 360} 58% 54%)`;
 }
 
+function includesKeyword(text: string, keyword: string) {
+  const normalizedText = text.replace(/\s+/g, " ").toLocaleLowerCase("ko");
+  const normalizedKeyword = keyword
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase("ko");
+  const keywordStem = normalizedKeyword.endsWith("다")
+    ? normalizedKeyword.slice(0, -1)
+    : normalizedKeyword;
+
+  return (
+    normalizedText.includes(normalizedKeyword) ||
+    (keywordStem.length > 1 && normalizedText.includes(keywordStem))
+  );
+}
+
 type KeywordDashboardProps = {
   onReset: () => void;
   result: unknown;
 };
+
+function RealtimeNoteCard({ text }: { text: string }) {
+  return (
+    <article className={`${styles.resultCard} ${styles.realtimeNoteCard}`}>
+      <div className={styles.eyebrow}>실시간 기록</div>
+      <h2>상담 기록</h2>
+      <p>업로드한 realtime_note 문서에서 정리된 내용입니다.</p>
+      <div className={styles.realtimeNoteText}>{text}</div>
+    </article>
+  );
+}
 
 function makePolyline(values: number[], maxValue: number) {
   const width = 700;
@@ -33,7 +65,21 @@ export default function KeywordDashboard({
   onReset,
   result,
 }: KeywordDashboardProps) {
+  const [selectedKeyword, setSelectedKeyword] = useState<string | null>(null);
   const data = buildKeywordDashboardData(result);
+  const realtimeNoteText = readReadableStructuredText(result);
+
+  function handleExportPdf() {
+    const previousTitle = document.title;
+    const exportedAt = new Date().toISOString().slice(0, 10);
+
+    document.title = `MoomIn_김OO_분석결과_${exportedAt}`;
+    try {
+      window.print();
+    } finally {
+      document.title = previousTitle;
+    }
+  }
 
   if (!data) {
     return (
@@ -48,6 +94,7 @@ export default function KeywordDashboard({
           <pre className={styles.resultJson}>
             {JSON.stringify(result, null, 2)}
           </pre>
+          {realtimeNoteText && <RealtimeNoteCard text={realtimeNoteText} />}
           <button
             className={`${styles.button} ${styles.primaryButton}`}
             onClick={onReset}
@@ -71,6 +118,26 @@ export default function KeywordDashboard({
   const hasHistoricalSessions = data.groups.some((group) =>
     group.includes("회기"),
   );
+  const selectedSummary = data.summaries.find(
+    (summary) => summary.keyword === selectedKeyword,
+  );
+  const selectedTrend = data.trends.find(
+    (trend) => trend.keyword === selectedKeyword,
+  );
+  const sidebarGroups = data.groups.slice(-5);
+  const sidebarValues = selectedTrend
+    ? selectedTrend.values.slice(-5)
+    : sidebarGroups.map((_, index) =>
+        index === sidebarGroups.length - 1 ? (selectedSummary?.count ?? 0) : 0,
+      );
+  const sidebarMaximum = Math.max(...sidebarValues, 1);
+  const matchingUtterances = selectedKeyword
+    ? data.utterances
+        .filter((utterance) =>
+          includesKeyword(utterance.text, selectedKeyword),
+        )
+        .slice(0, Math.max(0, Math.floor(selectedSummary?.count ?? 0)))
+    : [];
 
   return (
     <section className={styles.resultsPage} aria-live="polite">
@@ -84,16 +151,27 @@ export default function KeywordDashboard({
             키워드 {data.uniqueKeywords}개 · 총 {data.totalMentions}회 감지
           </p>
         </div>
-        <button
-          className={`${styles.button} ${styles.secondaryButton}`}
-          onClick={onReset}
-          type="button"
-        >
-          다른 문서 분석
-        </button>
+        <div className={styles.resultsHeaderActions}>
+          <button
+            className={`${styles.button} ${styles.secondaryButton}`}
+            onClick={onReset}
+            type="button"
+          >
+            다른 문서 분석
+          </button>
+          <button
+            className={`${styles.button} ${styles.primaryButton} ${styles.exportPdfButton}`}
+            onClick={handleExportPdf}
+            type="button"
+          >
+            PDF로 추출
+          </button>
+        </div>
       </header>
 
-      <div className={styles.resultsContent}>
+      <div
+        className={`${styles.resultsContent} ${selectedKeyword ? styles.resultsContentWithSidebar : ""}`}
+      >
         <article className={styles.resultCard}>
           <div className={styles.cardHeading}>
             <div>
@@ -108,7 +186,13 @@ export default function KeywordDashboard({
 
           <div className={styles.keywordBars}>
             {visibleKeywords.map((item, index) => (
-              <div className={styles.keywordRow} key={item.keyword}>
+              <button
+                aria-pressed={selectedKeyword === item.keyword}
+                className={`${styles.keywordRow} ${selectedKeyword === item.keyword ? styles.keywordRowSelected : ""}`}
+                key={item.keyword}
+                onClick={() => setSelectedKeyword(item.keyword)}
+                type="button"
+              >
                 <strong>{item.keyword}</strong>
                 <div className={styles.keywordTrack}>
                   <span
@@ -118,7 +202,7 @@ export default function KeywordDashboard({
                 </div>
                 <b>{item.count}회</b>
                 <span>{item.percentage.toFixed(1)}%</span>
-              </div>
+              </button>
             ))}
           </div>
 
@@ -225,6 +309,8 @@ export default function KeywordDashboard({
           </p>
         </article>
 
+        {realtimeNoteText && <RealtimeNoteCard text={realtimeNoteText} />}
+
         <details className={styles.rawResult}>
           <summary>분석 결과 JSON 보기</summary>
           <pre className={styles.resultJson}>
@@ -232,6 +318,93 @@ export default function KeywordDashboard({
           </pre>
         </details>
       </div>
+
+      {selectedKeyword && selectedSummary && (
+        <aside
+          aria-label={`${selectedKeyword} 키워드 상세`}
+          className={styles.keywordSidebar}
+        >
+          <header className={styles.keywordSidebarHeader}>
+            <div>
+              <h2>{selectedKeyword}</h2>
+              <p>현재 분석 · 내담자 발화</p>
+            </div>
+            <button
+              className={styles.keywordSidebarClose}
+              onClick={() => setSelectedKeyword(null)}
+              type="button"
+            >
+              닫기
+            </button>
+          </header>
+
+          <div className={styles.keywordSidebarSummary}>
+            <strong>{selectedSummary.count}회</strong>
+            <span>{selectedSummary.percentage.toFixed(1)}%</span>
+            <small>전체 키워드 등장 횟수 중</small>
+          </div>
+
+          <section className={styles.keywordSidebarSection}>
+            <div className={styles.keywordSidebarSectionHead}>
+              <h3>최근 5회기 발화 횟수</h3>
+            </div>
+            <div
+              aria-label={`${selectedKeyword} 최근 5회기 발화 횟수 변화`}
+              className={styles.sidebarBars}
+              role="img"
+            >
+              {sidebarGroups.map((group, index) => {
+                const value = sidebarValues[index] ?? 0;
+                return (
+                  <div className={styles.sidebarBarItem} key={group}>
+                    <span>{value}회</span>
+                    <div className={styles.sidebarBarTrack}>
+                      <i
+                        style={{
+                          height: `${Math.max(
+                            (value / sidebarMaximum) * 100,
+                            value > 0 ? 7 : 2,
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                    <small>{group}</small>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className={styles.keywordSidebarSection}>
+            <div className={styles.keywordSidebarSectionHead}>
+              <h3>실제 발화 원문</h3>
+              <span>{matchingUtterances.length}개</span>
+            </div>
+            <div className={styles.keywordUtterances}>
+              {matchingUtterances.length > 0 ? (
+                matchingUtterances.map((utterance, index) => (
+                  <article key={`${utterance.turnIndex ?? index}-${index}`}>
+                    <div>
+                      <span>
+                        {utterance.timestamp ??
+                          (utterance.page ? `${utterance.page}페이지` : "원문")}
+                      </span>
+                      {utterance.turnIndex !== undefined && (
+                        <small>{utterance.turnIndex}번째 발화</small>
+                      )}
+                    </div>
+                    <p>“{utterance.text}”</p>
+                  </article>
+                ))
+              ) : (
+                <p className={styles.keywordUtteranceEmpty}>
+                  이 키워드가 포함된 발화 원문을 찾지 못했습니다.
+                </p>
+              )}
+            </div>
+          </section>
+        </aside>
+      )}
     </section>
   );
 }

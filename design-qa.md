@@ -1,33 +1,32 @@
-# Design QA — 키워드 분석 결과
+# Design QA — 키워드 상세 사이드바
 
-- source visual truth path: `/Users/yjkwak/Documents/junction/design-source-keyword-results.png`
-- implementation screenshot path: `/Users/yjkwak/Documents/junction/design-implementation-keyword-results.png`
-- mobile implementation screenshot path: `/Users/yjkwak/Documents/junction/design-implementation-keyword-results-mobile.png`
-- side-by-side comparison path: `/Users/yjkwak/Documents/junction/design-comparison-keyword-results.png`
-- viewport: desktop 1280 × 720 CSS px, mobile 390 × 844 CSS px
+- source visual truth path: `/Users/yjkwak/Documents/junction/design-source-keyword-sidebar.png`
+- implementation screenshot path: `/Users/yjkwak/Documents/junction/design-implementation-keyword-sidebar.png`
+- side-by-side comparison path: `/Users/yjkwak/Documents/junction/design-comparison-keyword-sidebar.png`
+- viewport: desktop 1280 × 720 CSS px
 - source pixels: 1280 × 720
 - implementation pixels: 1280 × 720
-- density normalization: source and implementation were captured at matching 1× dimensions; no resampling was required before the side-by-side comparison
-- state: 키워드 9개와 5개 회기를 포함한 `client_utterance_keywords` 응답을 사용한 분석 완료 상태
+- density normalization: both captures use matching 1280 × 720 dimensions at 1× density
+- state: 분석 완료 화면에서 첫 번째 키워드 막대를 눌러 상세 사이드바를 연 상태
 
 ## Full-view comparison evidence
 
-The source and implementation were combined in `design-comparison-keyword-results.png`. Both retain the same core composition: persistent client sidebar, restrained white/gray workspace, compact result header, rounded keyword summary card, blue frequency bars, and the start of the trend card within the first viewport. The implementation intentionally omits the source's session tab strip because the current API response does not define a selectable document/session collection for that control.
+The two open-sidebar states are combined in `design-comparison-keyword-sidebar.png`. Both preserve the client rail, compact result card, highlighted selected keyword row, fixed right detail panel, summary count, five-column history bars, and stacked source utterance cards. The implementation uses the current product's result header rather than inventing the reference's unavailable session-tab data.
 
 ## Focused region comparison evidence
 
-A separate focused crop was not needed. At 1280 × 720, the keyword labels, counts, percentages, card padding, bar lengths, header hierarchy, border radii, and trend legend are readable in the combined comparison without magnification.
+The sidebar is large enough in the full 1280 × 720 comparison to verify its header, total count, five-session bar proportions, timestamps, turn indices, utterance card padding, borders, and scroll continuation. A separate crop was not required.
 
 ## Findings
 
 - No actionable P0, P1, or P2 differences remain.
-- Fonts and typography: IBM Plex Sans KR/Poppins hierarchy, compact sizes, muted metadata, and medium-weight headings match the existing product language and reference density.
-- Spacing and layout rhythm: sidebar width, header height, card spacing, bar-row rhythm, and rounded surfaces follow the reference proportions. The missing session strip is an intentional data-model constraint, not visual drift.
-- Colors and visual tokens: the existing MoomIn blue, pale-blue bar fills, gray tracks, white surfaces, and hairline borders are consistently reused.
-- Image quality and asset fidelity: the result screen contains no source imagery or non-standard image assets. The trend graphic is a data-driven SVG chart rather than a decorative replacement asset.
-- Copy and content: labels describe actual `client_utterance_keywords` aggregation, actual counts, percentages, and either session-based or utterance-segment trends without claiming normalized values that the API does not provide.
-- Responsive behavior: the 390 × 844 capture keeps the header action, labels, bars, counts, card padding, and scroll flow visible without horizontal clipping.
-- Accessibility and interaction: the trend chart has an accessible image label and point labels; the raw JSON remains available in a native details disclosure; browser console contained no errors or warnings during the rendered result checks.
+- Fonts and typography: IBM Plex Sans KR/Poppins, compact metadata, blue numeric emphasis, and source-text hierarchy match the reference density.
+- Spacing and layout rhythm: the 360px fixed panel, section dividers, 24px horizontal padding, summary row, bar area, and utterance card rhythm closely follow the reference.
+- Colors and visual tokens: MoomIn blue, pale history bars, current-value emphasis, gray backgrounds, and hairline separators reuse existing tokens.
+- Image quality and asset fidelity: this state contains no imagery or custom illustration assets. Both charts are data-driven interface graphics.
+- Copy and content: the panel clearly distinguishes total keyword count, recent five-session counts, and API-derived client utterance originals. No utterance text is fabricated when a match is unavailable.
+- Interaction and accessibility: every keyword row is a real button with selected state, the panel is labelled as complementary content, the history bars have an accessible graph label, and the close control is keyboard-operable. Opening the panel was verified in the browser; no console errors or warnings appeared.
+- Responsive behavior: below the desktop breakpoint the panel becomes a full-width overlay and the underlying result content stops reserving desktop sidebar space.
 
 ## Comparison history
 
@@ -35,16 +34,16 @@ A separate focused crop was not needed. At 1280 × 720, the keyword labels, coun
 
 ## Implementation checklist
 
-- [x] Aggregate keyword counts and percentages from the backend schema.
-- [x] Render the top keyword frequency bars.
-- [x] Render session-based trends when session labels exist.
-- [x] Fall back to utterance-order segments for a single-session document.
-- [x] Preserve the raw response for debugging.
-- [x] Verify desktop and mobile layouts.
-- [x] Verify the production build and type check.
+- [x] Open the sidebar from each visible keyword row.
+- [x] Display current count and percentage.
+- [x] Display the latest five trend values as bars.
+- [x] Match source utterances from `client_utterances` without creating placeholder quotes.
+- [x] Display timestamps, page fallback, and turn index when available.
+- [x] Support an empty-original state.
+- [x] Verify lint, type checking, production build, browser interaction, and console output.
 
 ## Follow-up polish
 
-- P3: If the backend later exposes total client word count per session, the trend can optionally add the reference design's normalized comparison mode alongside actual counts.
+- P3: The reference uses an icon-only close affordance; the implementation uses the clearer text label `닫기` because the project does not currently include an icon library.
 
 final result: passed

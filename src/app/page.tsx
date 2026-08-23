@@ -205,6 +205,36 @@ function findSpeakerConfirmation(
   };
 }
 
+function readDocumentType(value: unknown, depth = 0): string | null {
+  const parsedValue = parseJsonText(value) ?? value;
+  if (depth > 8 || !isRecord(parsedValue)) return null;
+
+  const directType = normalizeText(
+    parsedValue.document_type ?? parsedValue.documentType,
+  );
+  if (directType) return directType.toLowerCase();
+
+  const prioritizedValues = [
+    parsedValue.analysisResult,
+    parsedValue.realtimeNote,
+    parsedValue.speakerSelection,
+    ...Object.values(parsedValue),
+  ];
+
+  for (const nestedValue of prioritizedValues) {
+    if (isRecord(nestedValue) || typeof nestedValue === "string") {
+      const nestedType = readDocumentType(nestedValue, depth + 1);
+      if (nestedType) return nestedType;
+    }
+  }
+
+  return null;
+}
+
+function isRealtimeNoteDocument(documentType: string | null) {
+  return documentType === "realtime_note" || documentType === "realtme_note";
+}
+
 function formatFileSize(size: number) {
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(0)} KB`;
@@ -256,6 +286,8 @@ export default function Home() {
   );
   const [analysisSessionId, setAnalysisSessionId] = useState(SESSION_ID);
   const [isConfirmingSpeaker, setIsConfirmingSpeaker] = useState(false);
+  const [latestKeywordAnalysis, setLatestKeywordAnalysis] =
+    useState<unknown>(null);
 
   function selectFile(nextFile: File | null) {
     setFile(nextFile);
@@ -313,7 +345,19 @@ export default function Home() {
       }
 
       console.log(responseBody);
-      setResult(responseBody);
+      const documentType = readDocumentType(responseBody);
+      const nextResult =
+        isRealtimeNoteDocument(documentType) && latestKeywordAnalysis
+          ? {
+              analysis: latestKeywordAnalysis,
+              realtimeNote: responseBody,
+            }
+          : responseBody;
+
+      setResult(nextResult);
+      if (documentType === "transcript") {
+        setLatestKeywordAnalysis(responseBody);
+      }
       if (
         isRecord(responseBody) &&
         typeof responseBody.sessionId === "string" &&
@@ -321,9 +365,13 @@ export default function Home() {
       ) {
         setAnalysisSessionId(responseBody.sessionId.trim());
       }
-      const nextSpeakerConfirmation = findSpeakerConfirmation(responseBody);
+      const nextSpeakerConfirmation = isRealtimeNoteDocument(documentType)
+        ? null
+        : findSpeakerConfirmation(responseBody);
 
-      if (nextSpeakerConfirmation) {
+      if (isRealtimeNoteDocument(documentType)) {
+        setView("complete");
+      } else if (nextSpeakerConfirmation) {
         setSpeakerConfirmation(nextSpeakerConfirmation);
         setSelectedSpeakerLabel(nextSpeakerConfirmation.selectedLabel);
       } else {
@@ -366,10 +414,12 @@ export default function Home() {
 
       console.log("확인된 내담자 발화자:", selectedSpeakerLabel);
       console.log("발화자 선택 응답:", responseBody);
-      setResult({
+      const completedTranscriptAnalysis = {
         analysis: result,
         speakerSelection: responseBody,
-      });
+      };
+      setResult(completedTranscriptAnalysis);
+      setLatestKeywordAnalysis(completedTranscriptAnalysis);
       setSpeakerConfirmation(null);
       setSelectedSpeakerLabel(null);
       setView("complete");

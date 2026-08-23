@@ -18,6 +18,13 @@ export type KeywordTrend = {
   values: number[];
 };
 
+export type KeywordUtterance = {
+  page?: number;
+  text: string;
+  timestamp?: string;
+  turnIndex?: number;
+};
+
 export type KeywordDashboardData = {
   groups: string[];
   points: KeywordPoint[];
@@ -25,6 +32,7 @@ export type KeywordDashboardData = {
   totalMentions: number;
   trends: KeywordTrend[];
   uniqueKeywords: number;
+  utterances: KeywordUtterance[];
   usesMockHistory: boolean;
 };
 
@@ -36,7 +44,7 @@ const MOCK_KEYWORD_HISTORY = [
   { label: "5회기", counts: [3, 2, 5, 4, 5] },
 ] as const;
 
-const MOCK_TREND_KEYWORDS = ["잠", "못 하다", "내일", "생각", "친구"] as const;
+const MOCK_TREND_KEYWORDS = ["과제", "그냥", "동생", "성적", "수업"] as const;
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -95,6 +103,98 @@ function findKeywordSource(value: unknown, depth = 0): unknown {
   }
 
   return null;
+}
+
+function findClientUtteranceSource(value: unknown, depth = 0): unknown {
+  const parsed = parseJsonText(value);
+  if (depth > 8 || !isRecord(parsed)) return null;
+
+  const direct = parsed.client_utterances ?? parsed.clientUtterances;
+  if (direct !== undefined && direct !== null) return direct;
+
+  const prioritizedValues = [
+    parsed.speakerSelection,
+    parsed.clientTranscript,
+    parsed.analysisResult,
+    ...Object.values(parsed),
+  ];
+
+  for (const nestedValue of prioritizedValues) {
+    if (isRecord(nestedValue)) {
+      const found = findClientUtteranceSource(nestedValue, depth + 1);
+      if (found !== null) return found;
+    }
+  }
+
+  return null;
+}
+
+export function readReadableStructuredText(
+  value: unknown,
+  depth = 0,
+): string | null {
+  const parsed = parseJsonText(value);
+  if (depth > 8 || !isRecord(parsed)) return null;
+
+  const direct =
+    parsed.readable_structured_text ?? parsed.readableStructuredText;
+  if (direct !== undefined && direct !== null) {
+    if (typeof direct === "string") {
+      return direct.trim() || null;
+    }
+
+    if (isRecord(direct) || Array.isArray(direct)) {
+      return JSON.stringify(direct, null, 2);
+    }
+
+    return String(direct);
+  }
+
+  const prioritizedValues = [
+    parsed.realtimeNote,
+    parsed.analysisResult,
+    ...Object.values(parsed),
+  ];
+
+  for (const nestedValue of prioritizedValues) {
+    if (isRecord(nestedValue) || typeof nestedValue === "string") {
+      const found = readReadableStructuredText(nestedValue, depth + 1);
+      if (found) return found;
+    }
+  }
+
+  return null;
+}
+
+function collectClientUtterances(response: unknown): KeywordUtterance[] {
+  const source = findClientUtteranceSource(response);
+  if (!Array.isArray(source)) return [];
+
+  return source.flatMap((utterance) => {
+    if (!isRecord(utterance)) return [];
+
+    const text = asText(
+      utterance.utterance_text ?? utterance.utteranceText ?? utterance.text,
+    );
+    if (!text) return [];
+
+    const pageValue = Number(utterance.page);
+    const turnValue = Number(utterance.turn_index ?? utterance.turnIndex);
+
+    return [
+      {
+        text,
+        timestamp:
+          asText(
+            utterance.timestamp_original ??
+              utterance.timestampOriginal ??
+              utterance.timestamp,
+          ) ?? undefined,
+        page: Number.isFinite(pageValue) ? pageValue : undefined,
+        turnIndex: Number.isFinite(turnValue) ? turnValue : undefined,
+      },
+    ];
+  });
 }
 
 function sessionSortValue(label: string): number {
@@ -306,6 +406,7 @@ export function buildKeywordDashboardData(
     totalMentions,
     trends,
     uniqueKeywords: totals.size,
+    utterances: collectClientUtterances(response),
     usesMockHistory: !hasHistoricalSessions,
   };
 }
